@@ -3,6 +3,10 @@
              UndecidableInstances, OverlappingInstances,
              MultiParamTypeClasses, GeneralizedNewtypeDeriving #-}
 
+{-|
+ - This demonstrates the use of the auth library.  This code compiles,
+ - but is not really a working demo.  It needs a lot of work.
+ -}
 module Main where
 
 import Control.Concurrent
