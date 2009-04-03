@@ -1,0 +1,6 @@
+ * Change to more reasonable package (e.g. Happstack.Extra.Auth or something similar)
+ * Cabalize for ease of installation (not sure about this if code is subsumed by happstack)
+ * Break up as separate source files (e.g. files for state, salt+hash, server stuff, etc...)
+ * Password hashing needs to be solidified soon so apps using
+   this framework don't get stuck with a password database that only
+   works on an old version of the library.
