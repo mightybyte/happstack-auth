@@ -1,0 +1,26 @@
+Name:                happstack-auth
+Version:             0.1
+License:             BSD3
+Author:              Mighty Byte
+Maintainer:          Mighty Byte
+
+Synopsis:            Happstack authentication suite
+Description:         Happstack module
+Category:            Web
+
+homepage:            http://github.com/mightybyte/happstack-auth/tree/master
+Build-Type:          Simple
+
+hs-source-dirs:      src
+Exposed-modules:     Happstack.Auth
+
+Build-Depends:       haskell98, base, bytestring, mtl, containers, happstack, happstack-state, happstack-server,
+                     happstack-ixset, happstack-data, Crypto
+
+
+Extensions:          TemplateHaskell, DeriveDataTypeable, MultiParamTypeClasses,
+                     TypeFamilies, FlexibleContexts, OverlappingInstances,
+                     FlexibleInstances, UndecidableInstances, ScopedTypeVariables,
+                     TypeSynonymInstances, PatternGuards
+                     CPP, ForeignFunctionInterface
+

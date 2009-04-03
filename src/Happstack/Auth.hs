@@ -4,7 +4,7 @@
              UndecidableInstances, OverlappingInstances,
              MultiParamTypeClasses, GeneralizedNewtypeDeriving #-}
 
-module Auth where
+module Happstack.Auth where
 
 import Maybe
 import Numeric
@@ -26,7 +26,9 @@ import Happstack.State
 
 sessionCookie = "sid"
 
-type SessionKey = Integer
+newtype SessionKey = SessionKey Integer deriving (Read,Show,Ord,Eq,Typeable,Data,Num,Random)
+instance Version SessionKey
+$(deriveSerialize ''SessionKey)
 
 newtype UserId = UserId { unUid :: Word64 } deriving (Read,Show,Ord,Eq,Typeable,Data,Num)
 instance Version UserId
@@ -148,6 +150,20 @@ authUser name pass = do
   case u of
     (Just v) -> return $ if checkSalt pass (password v) then u else Nothing
     Nothing  -> return Nothing
+
+changePassword :: (MonadState AuthState m, MonadReader AuthState m, MonadIO m)
+               => String
+               -> String
+               -> String
+               -> m Bool
+changePassword user oldpass newpass = do
+  mu <- authUser user oldpass
+  case mu of
+    (Just u) -> do h <- liftIO $ buildSaltAndHash newpass
+                   modUsers (changePass h u)
+                   return True
+    Nothing  -> return False
+  where changePass np u udb = updateIx (Username user) (u { password = np }) udb
 
 listUsers :: MonadReader AuthState m => m [Username]
 listUsers = do

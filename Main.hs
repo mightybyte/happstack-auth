@@ -14,7 +14,7 @@ import Control.Monad
 import Happstack.Server
 import Happstack.State
 
-import Auth
+import Happstack.Auth
 
 impl = msum
   [ dir "login" $ msum [methodSP GET $ (fileServe ["login.html"] ".")
