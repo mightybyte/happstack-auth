@@ -1,0 +1,7 @@
+This is an authentication framework for Happstack.  It is intended to
+give Happstack developers an easy way to add session
+management/authentication to a web app.  Right now it is functional
+but needs quite a bit of polishing to become generally useable.  I'm
+realeasing it in this rough state because I don't know when I'll get
+around to actually polishing it up myself.  If you want to improve it,
+feel free to fork this repo.  I'll be happy to merge improvements in.

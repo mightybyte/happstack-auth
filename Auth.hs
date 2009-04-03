@@ -1,0 +1,282 @@
+{-# OPTIONS -fglasgow-exts #-}
+{-# LANGUAGE NoMonomorphismRestriction,
+             TemplateHaskell , FlexibleInstances,
+             UndecidableInstances, OverlappingInstances,
+             MultiParamTypeClasses, GeneralizedNewtypeDeriving #-}
+
+module Auth where
+
+import Maybe
+import Numeric
+import Random
+
+import qualified Data.Map as M
+import Control.Monad.Reader
+import Control.Monad.State (modify,put,get,gets,MonadState)
+import Control.Monad.Trans
+import Codec.Utils
+import Data.ByteString.Internal
+import Data.Digest.SHA512
+import Data.Generics hiding ((:+:))
+import Data.Word
+import Happstack.Data
+import Happstack.Data.IxSet
+import Happstack.Server
+import Happstack.State
+
+sessionCookie = "sid"
+
+type SessionKey = Integer
+
+newtype UserId = UserId { unUid :: Word64 } deriving (Read,Show,Ord,Eq,Typeable,Data,Num)
+instance Version UserId
+$(deriveSerialize ''UserId)
+
+newtype Username = Username { unUser :: String } deriving (Read,Show,Ord,Eq,Typeable,Data)
+instance Version Username
+$(deriveSerialize ''Username)
+
+data SessionData = SessionData {
+  sesUid :: UserId,
+  sesUsername :: Username
+} deriving (Read,Show,Eq,Typeable,Data)
+
+newtype SaltedHash = SaltedHash [Octet] deriving (Read,Show,Ord,Eq,Typeable,Data)
+instance Version SaltedHash
+$(deriveSerialize ''SaltedHash)
+
+saltLength = 16
+strToOctets = listToOctets . (map c2w)
+slowHash a = (iterate hash a) !! 512
+randomSalt :: IO String
+randomSalt = liftM concat $ sequence $ take saltLength $ repeat $
+  randomRIO (0::Int,15) >>= return . flip showHex ""
+buildSaltAndHash :: String -> IO SaltedHash
+buildSaltAndHash str = do
+  salt <- randomSalt
+  let salt' = strToOctets salt
+  let str' = strToOctets str
+  let h = slowHash (salt'++str')
+  return $ SaltedHash $ salt'++h
+checkSalt :: String -> SaltedHash -> Bool
+checkSalt str (SaltedHash h) = h == salt++(slowHash $ salt++(strToOctets str))
+  where salt = take saltLength h
+  
+data Sessions a = Sessions {unsession::M.Map SessionKey a}
+  deriving (Read,Show,Eq,Typeable,Data)
+
+data User = User {
+  userid :: UserId,
+  username :: Username,
+  password :: SaltedHash
+} deriving (Read,Show,Ord,Eq,Typeable,Data)
+
+$(inferIxSet "UserDB" ''User 'noCalcs [''UserId, ''Username])
+
+data AuthState = AuthState {
+  sessions :: Sessions SessionData,
+  users :: UserDB,
+  nextUid :: UserId
+} deriving (Show,Read,Typeable,Data)
+instance Version SessionData
+instance Version (Sessions a)
+
+$(deriveSerialize ''SessionData)
+$(deriveSerialize ''Sessions)
+
+instance Version AuthState
+instance Version User
+
+$(deriveSerialize ''User)
+$(deriveSerialize ''AuthState)
+
+instance Component AuthState where
+  type Dependencies AuthState = End
+  initialValue = AuthState (Sessions M.empty) empty 0
+
+askUsers :: MonadReader AuthState m => m UserDB
+askUsers = return . users =<< ask
+
+askSessions :: Query AuthState (Sessions SessionData)
+askSessions = return . sessions =<< ask
+
+getUser :: MonadReader AuthState m => Username -> m (Maybe User)
+getUser username = do
+  udb <- askUsers
+  return $ getOne $ udb @= username
+
+modUsers :: MonadState AuthState m =>
+            (UserDB -> UserDB) -> m ()
+modUsers f = modify (\s -> (AuthState (sessions s) (f $ users s) (nextUid s)))
+
+modSessions :: MonadState AuthState m =>
+               (Sessions SessionData -> Sessions SessionData) -> m ()
+modSessions f = modify (\s -> (AuthState (f $ sessions s) (users s) (nextUid s)))
+
+getAndIncUid :: MonadState AuthState m => m UserId
+getAndIncUid = do
+  uid <- gets nextUid
+  modify (\s -> (AuthState (sessions s) (users s) (uid+1)))
+  return uid
+
+isUser :: MonadReader AuthState m => Username -> m Bool
+isUser name = do
+  us <- askUsers
+  return $ isJust $ getOne $ us @= name
+
+addUser :: (MonadState AuthState m, MonadReader AuthState m) => Username -> SaltedHash -> m (Maybe User)
+addUser name pass = do
+  exists <- isUser name
+  if exists
+    then return Nothing
+    else do u <- newUser name pass
+            modUsers $ insert u
+            return $ Just u
+  where newUser u p = do uid <- getAndIncUid
+                         return $ User uid u p
+
+delUser :: MonadState AuthState m => Username -> m ()
+delUser name = modUsers del
+  where del db = case getOne (db @= name) of
+                   Just u -> delete u db
+                   Nothing -> db
+
+authUser :: MonadReader AuthState m => String -> String -> m (Maybe User)
+authUser name pass = do
+  udb <- askUsers
+  let u = getOne $ udb @= (Username name)
+  case u of
+    (Just v) -> return $ if checkSalt pass (password v) then u else Nothing
+    Nothing  -> return Nothing
+
+listUsers :: MonadReader AuthState m => m [Username]
+listUsers = do
+  udb <- askUsers
+  return $ map fst $ groupBy udb
+
+numUsers ::  MonadReader AuthState m => m Int
+numUsers = liftM length listUsers
+
+setSession :: (MonadState AuthState m) => SessionKey -> SessionData -> m ()
+setSession key u = do
+  modSessions $ Sessions . (M.insert key u) . unsession
+  return ()
+
+newSession u = do
+  key <- getRandom
+  setSession key u
+  return key
+
+delSession :: (MonadState AuthState m) => SessionKey -> m ()
+delSession key = do
+  modSessions $ Sessions . (M.delete key) . unsession
+  return ()
+
+getSession::SessionKey -> Query AuthState (Maybe SessionData)
+getSession key = liftM ((M.lookup key) . unsession) askSessions
+
+numSessions:: Proxy AuthState -> Query AuthState Int
+numSessions = proxyQuery $ liftM (M.size . unsession) askSessions
+$(mkMethods ''AuthState ['addUser, 'getUser, 'delUser, 'authUser, 'isUser, 'listUsers, 'numUsers,
+             'setSession, 'getSession, 'newSession, 'delSession, 'numSessions])
+
+{-
+ - Login page
+ -}
+
+data UserAuthInfo = UserAuthInfo String String
+instance FromData UserAuthInfo where
+  fromData = liftM2 UserAuthInfo (look "username")
+             (look "password" `mplus` return "nopassword")
+
+performLogin user = do
+  key <- update $ NewSession (SessionData (userid user) (username user))
+  addCookie (-1) (mkCookie sessionCookie (show key))
+
+{-
+ - Handles data from a login form to log the user in.  The form must supply
+ - fields named "username" and "password".
+ -}
+loginHandler successResponse failResponse (UserAuthInfo user pass) =
+  anyRequest $ do
+    mu <- query $ AuthUser user pass
+    case mu of
+      Just u -> do performLogin u
+                   successResponse
+      Nothing -> failResponse
+
+{-
+ - Logout page
+ -}
+
+performLogout sid = do
+  clearSessionCookie
+  update $ DelSession sid
+
+logoutHandler target (Just sid) = anyRequest $ do
+  ses <- query $ (GetSession sid)
+  case ses of
+    Just _ -> do performLogout sid
+                 target
+    Nothing -> ok $ toResponse $ "not logged in"
+logoutHandler _ Nothing =
+  anyRequest $ ok $ toResponse $ "not logged in"
+
+{-
+ - Registration page
+ -}
+
+data NewUserInfo = NewUserInfo String String String
+instance FromData NewUserInfo where
+  fromData = liftM3 NewUserInfo (look "username")
+             (look "password" `mplus` return "nopassword")
+             (look "password2" `mplus` return "nopassword2")
+
+register user pass = do
+  h <- liftIO $ buildSaltAndHash pass
+  update $ AddUser user h
+
+checkAndAdd uExists good user pass = do
+  u <- register user pass
+  case u of
+    Just u' -> do performLogin u'
+                  good
+    Nothing -> uExists
+
+{-
+ - Handles data from a new user registration form.  The form must supply
+ - fields named "username", "password", and "password2".
+ -}
+newAccountHandler noMatch uExists good (NewUserInfo user pass1 pass2)
+  | pass1 == pass2 = anyRequest $ checkAndAdd uExists good (Username user) pass1
+  | otherwise = anyRequest $ noMatch
+
+{-
+ - Requiring a login
+ -}
+
+clearSessionCookie = addCookie 0 (mkCookie sessionCookie "0")
+
+getSesCookie = liftM Just (readCookieValue sessionCookie) `mplus` return Nothing
+
+cookieR = withDataFn getSesCookie
+
+loginGate :: (MonadIO m)
+          => ServerPartT m a
+          -> ServerPartT m a
+          -> ServerPartT m a
+loginGate reg guest = withSession (\_ -> reg) guest
+
+withSession :: (MonadIO m)
+            => (SessionData -> ServerPartT m a)
+            -> ServerPartT m a
+            -> ServerPartT m a
+withSession f guestSPT = cookieR action
+  where action (Just sid) = (query $ GetSession sid) >>= (maybe noSession f)
+        action Nothing    = guestSPT
+        noSession = clearSessionCookie >> guestSPT
+
+loginRedirect = anyRequest $ seeOther "/" $ toResponse "Not logged in."
+
+requireLogin spt = loginGate spt loginRedirect
+
