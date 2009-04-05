@@ -70,7 +70,7 @@ data Sessions a = Sessions {unsession::M.Map SessionKey a}
 data User = User {
   userid :: UserId,
   username :: Username,
-  password :: SaltedHash
+  userpass :: SaltedHash
 } deriving (Read,Show,Ord,Eq,Typeable,Data)
 
 $(inferIxSet "UserDB" ''User 'noCalcs [''UserId, ''Username])
@@ -150,7 +150,7 @@ authUser name pass = do
   udb <- askUsers
   let u = getOne $ udb @= (Username name)
   case u of
-    (Just v) -> return $ if checkSalt pass (password v) then u else Nothing
+    (Just v) -> return $ if checkSalt pass (userpass v) then u else Nothing
     Nothing  -> return Nothing
 
 listUsers :: MonadReader AuthState m => m [Username]
@@ -265,7 +265,7 @@ changePassword user oldpass newpass = do
   mu <- query $ AuthUser user oldpass
   case mu of
     (Just u) -> do h <- liftIO $ buildSaltAndHash newpass
-                   update $ UpdateUser (u {password = h})
+                   update $ UpdateUser (u {userpass = h})
                    return True
     Nothing  -> return False
 
