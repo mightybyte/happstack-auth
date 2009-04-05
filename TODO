@@ -1,5 +1,7 @@
+ * Add session cleanup functionality
  * Add documentation
  * Break up as separate source files (e.g. files for state, salt+hash, server stuff, etc...)
  * Password hashing needs to be solidified soon so apps using
    this framework don't get stuck with a password database that only
-   works on an old version of the library.
+   works on an old version of the library.  (Since passwords cannot be
+   easily migrated)
