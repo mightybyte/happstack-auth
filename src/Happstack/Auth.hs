@@ -203,7 +203,7 @@ performLogin user = do
  - fields named "username" and "password".
  -}
 loginHandler successResponse failResponse (UserAuthInfo user pass) =
-  anyRequest $ do
+  do
     mu <- query $ AuthUser user pass
     case mu of
       Just u -> do performLogin u
@@ -218,7 +218,7 @@ performLogout sid = do
   clearSessionCookie
   update $ DelSession sid
 
-logoutHandler target (Just sid) = anyRequest $ do
+logoutHandler target (Just sid) = do
   ses <- query $ (GetSession sid)
   case ses of
     Just _ -> do performLogout sid
@@ -253,8 +253,8 @@ checkAndAdd uExists good user pass = do
  - fields named "username", "password", and "password2".
  -}
 newAccountHandler noMatch uExists good (NewUserInfo user pass1 pass2)
-  | pass1 == pass2 = anyRequest $ checkAndAdd uExists good (Username user) pass1
-  | otherwise = anyRequest $ noMatch
+  | pass1 == pass2 = checkAndAdd uExists good (Username user) pass1
+  | otherwise = noMatch
 
 changePassword :: (MonadIO m)
                => String
@@ -277,24 +277,20 @@ clearSessionCookie = addCookie 0 (mkCookie sessionCookie "0")
 
 getSesCookie = liftM Just (readCookieValue sessionCookie) `mplus` return Nothing
 
-cookieR = withDataFn getSesCookie
+withSesCookie = withDataFn getSesCookie
+
+withSession :: (MonadIO m)
+            => (SessionData -> ServerPartT m a)
+            -> ServerPartT m a
+            -> ServerPartT m a
+withSession f guestSPT = withSesCookie action
+  where action (Just sid) = (query $ GetSession sid) >>= (maybe noSession f)
+        action Nothing    = guestSPT
+        noSession = clearSessionCookie >> guestSPT
 
 loginGate :: (MonadIO m)
           => ServerPartT m a
           -> ServerPartT m a
           -> ServerPartT m a
 loginGate reg guest = withSession (\_ -> reg) guest
-
-withSession :: (MonadIO m)
-            => (SessionData -> ServerPartT m a)
-            -> ServerPartT m a
-            -> ServerPartT m a
-withSession f guestSPT = cookieR action
-  where action (Just sid) = (query $ GetSession sid) >>= (maybe noSession f)
-        action Nothing    = guestSPT
-        noSession = clearSessionCookie >> guestSPT
-
-loginRedirect = anyRequest $ seeOther "/" $ toResponse "Not logged in."
-
-requireLogin spt = loginGate spt loginRedirect
 
