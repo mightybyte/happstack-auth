@@ -143,6 +143,8 @@ delUser name = modUsers del
                    Just u -> delete u db
                    Nothing -> db
 
+updateUser u = do modUsers (updateIx (userid u) u)
+
 authUser :: MonadReader AuthState m => String -> String -> m (Maybe User)
 authUser name pass = do
   udb <- askUsers
@@ -150,20 +152,6 @@ authUser name pass = do
   case u of
     (Just v) -> return $ if checkSalt pass (password v) then u else Nothing
     Nothing  -> return Nothing
-
-changePassword :: (MonadState AuthState m, MonadReader AuthState m, MonadIO m)
-               => String
-               -> String
-               -> String
-               -> m Bool
-changePassword user oldpass newpass = do
-  mu <- authUser user oldpass
-  case mu of
-    (Just u) -> do h <- liftIO $ buildSaltAndHash newpass
-                   modUsers (changePass h u)
-                   return True
-    Nothing  -> return False
-  where changePass np u udb = updateIx (Username user) (u { password = np }) udb
 
 listUsers :: MonadReader AuthState m => m [Username]
 listUsers = do
@@ -193,7 +181,8 @@ getSession key = liftM ((M.lookup key) . unsession) askSessions
 
 numSessions:: Proxy AuthState -> Query AuthState Int
 numSessions = proxyQuery $ liftM (M.size . unsession) askSessions
-$(mkMethods ''AuthState ['addUser, 'getUser, 'delUser, 'authUser, 'isUser, 'listUsers, 'numUsers,
+$(mkMethods ''AuthState ['addUser, 'getUser, 'delUser, 'authUser,
+             'isUser, 'listUsers, 'numUsers, 'updateUser,
              'setSession, 'getSession, 'newSession, 'delSession, 'numSessions])
 
 {-
@@ -266,6 +255,19 @@ checkAndAdd uExists good user pass = do
 newAccountHandler noMatch uExists good (NewUserInfo user pass1 pass2)
   | pass1 == pass2 = anyRequest $ checkAndAdd uExists good (Username user) pass1
   | otherwise = anyRequest $ noMatch
+
+changePassword :: (MonadIO m)
+               => String
+               -> String
+               -> String
+               -> m Bool
+changePassword user oldpass newpass = do
+  mu <- query $ AuthUser user oldpass
+  case mu of
+    (Just u) -> do h <- liftIO $ buildSaltAndHash newpass
+                   update $ UpdateUser (u {password = h})
+                   return True
+    Nothing  -> return False
 
 {-
  - Requiring a login
