@@ -9,7 +9,6 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State (modify,put,get,gets,MonadState)
-import Data.Bits
 import Data.Generics hiding ((:+:))
 import Happstack.Server
 import Happstack.State
