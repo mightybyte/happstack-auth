@@ -40,6 +40,8 @@ getPosts = asks postDB
   
 $(mkMethods ''BlogState ['addPost, 'getPosts])
 
+rootRedirect = seeOther "/" (toResponse "")
+
 impl = msum
   [ dir "new" $
       msum [methodSP GET $ fileServe ["new_post.html"] "."
@@ -51,7 +53,7 @@ addPostHandler = do
   (Just title) <- getDataFn $ look "title"
   (Just body) <- getDataFn $ look "body"
   update $ AddPost (Post title body)
-  seeOther "/" (toResponse "")
+  rootRedirect
 
 viewPostsHandler = do
   posts <- query $ GetPosts
