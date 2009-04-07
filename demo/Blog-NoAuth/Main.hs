@@ -43,11 +43,12 @@ $(mkMethods ''BlogState ['addPost, 'getPosts])
 redir url = seeOther url (toResponse "")
 
 impl = msum
-  [ dir "new" $
-      msum [methodSP GET $ fileServe ["new_post.html"] "."
-           ,methodSP POST $ addPostHandler]
-  , methodSP GET $ viewPostsHandler
+  [ dir "new" newPostHandlers
+  , methodSP GET viewPostsHandler
   ]
+
+newPostHandlers = msum [methodSP GET $ fileServe ["new_post.html"] "."
+                       ,methodSP POST $ addPostHandler]
 
 addPostHandler = do
   (Just title) <- getDataFn $ look "title"
@@ -72,4 +73,3 @@ main = do
   killThread tid
   shutdownSystem control
   putStrLn "Shutdown complete"
-
