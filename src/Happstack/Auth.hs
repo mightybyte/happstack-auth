@@ -6,6 +6,7 @@
 
 module Happstack.Auth where
 
+import Char
 import Maybe
 import Numeric
 import Random
@@ -202,13 +203,13 @@ performLogin user = do
  - Handles data from a login form to log the user in.  The form must supply
  - fields named "username" and "password".
  -}
-loginHandler successResponse failResponse (UserAuthInfo user pass) =
-  do
-    mu <- query $ AuthUser user pass
-    case mu of
-      Just u -> do performLogin u
-                   successResponse
-      Nothing -> failResponse
+loginHandler successResponse failResponse = withData handler
+  where handler (UserAuthInfo user pass) = do
+          mu <- query $ AuthUser user pass
+          case mu of
+            Just u -> do performLogin u
+                         successResponse
+            Nothing -> failResponse
 
 {-
  - Logout page
@@ -218,14 +219,15 @@ performLogout sid = do
   clearSessionCookie
   update $ DelSession sid
 
-logoutHandler target (Just sid) = do
-  ses <- query $ (GetSession sid)
-  case ses of
-    Just _ -> do performLogout sid
-                 target
-    Nothing -> ok $ toResponse $ "not logged in"
-logoutHandler _ Nothing =
-  anyRequest $ ok $ toResponse $ "not logged in"
+logoutHandler target = withSessionId handler
+  where handler (Just sid) = do
+          ses <- query $ (GetSession sid)
+          case ses of
+            Just _ -> do performLogout sid
+                         target
+            Nothing -> nli
+        handler Nothing = anyRequest nli
+        nli = ok $ toResponse $ "not logged in"
 
 {-
  - Registration page
@@ -247,6 +249,13 @@ checkAndAdd uExists good user pass = do
     Just u' -> do performLogin u'
                   good
     Nothing -> uExists
+
+newUserHandler existsOrInvalid nomatch succ = withData handler
+  where handler (NewUserInfo user pass1 pass2)
+          | not (saneUsername user) = existsOrInvalid
+          | pass1 /= pass2 = nomatch
+          | otherwise = checkAndAdd existsOrInvalid succ (Username user) pass1
+        saneUsername str = foldl1 (&&) $ map isAlphaNum str
 
 {-
  - Handles data from a new user registration form.  The form must supply
@@ -275,15 +284,15 @@ changePassword user oldpass newpass = do
 
 clearSessionCookie = addCookie 0 (mkCookie sessionCookie "0")
 
-getSesCookie = liftM Just (readCookieValue sessionCookie) `mplus` return Nothing
+getSessionId = liftM Just (readCookieValue sessionCookie) `mplus` return Nothing
 
-withSesCookie = withDataFn getSesCookie
+withSessionId = withDataFn getSessionId
 
 withSession :: (MonadIO m)
             => (SessionData -> ServerPartT m a)
             -> ServerPartT m a
             -> ServerPartT m a
-withSession f guestSPT = withSesCookie action
+withSession f guestSPT = withSessionId action
   where action (Just sid) = (query $ GetSession sid) >>= (maybe noSession f)
         action Nothing    = guestSPT
         noSession = clearSessionCookie >> guestSPT
