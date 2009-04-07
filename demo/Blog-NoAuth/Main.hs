@@ -41,8 +41,9 @@ getPosts = asks postDB
 $(mkMethods ''BlogState ['addPost, 'getPosts])
 
 impl = msum
-  [ dir "new" $ msum [methodSP GET $ fileServe ["new_post.html"] "."
-                     ,methodSP POST $ addPostHandler]
+  [ dir "new" $
+      msum [methodSP GET $ fileServe ["new_post.html"] "."
+           ,methodSP POST $ addPostHandler]
   , methodSP GET $ viewPostsHandler
   ]
 
