@@ -40,7 +40,7 @@ getPosts = asks postDB
   
 $(mkMethods ''BlogState ['addPost, 'getPosts])
 
-rootRedirect = seeOther "/" (toResponse "")
+redir url = seeOther url (toResponse "")
 
 impl = msum
   [ dir "new" $
@@ -53,7 +53,7 @@ addPostHandler = do
   (Just title) <- getDataFn $ look "title"
   (Just body) <- getDataFn $ look "body"
   update $ AddPost (Post title body)
-  rootRedirect
+  redir "/"
 
 viewPostsHandler = do
   posts <- query $ GetPosts
