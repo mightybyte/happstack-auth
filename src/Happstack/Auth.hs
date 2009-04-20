@@ -108,6 +108,11 @@ getUser username = do
   udb <- askUsers
   return $ getOne $ udb @= username
 
+getUserById :: MonadReader AuthState m => UserId -> m (Maybe User)
+getUserById uid = do
+  udb <- askUsers
+  return $ getOne $ udb @= uid
+
 modUsers :: MonadState AuthState m =>
             (UserDB -> UserDB) -> m ()
 modUsers f = modify (\s -> (AuthState (sessions s) (f $ users s) (nextUid s)))
@@ -157,7 +162,7 @@ authUser name pass = do
 listUsers :: MonadReader AuthState m => m [Username]
 listUsers = do
   udb <- askUsers
-  return $ map fst $ groupBy udb
+  return $ map username $ toList udb
 
 numUsers ::  MonadReader AuthState m => m Int
 numUsers = liftM length listUsers
@@ -182,7 +187,7 @@ getSession key = liftM ((M.lookup key) . unsession) askSessions
 
 numSessions:: Proxy AuthState -> Query AuthState Int
 numSessions = proxyQuery $ liftM (M.size . unsession) askSessions
-$(mkMethods ''AuthState ['addUser, 'getUser, 'delUser, 'authUser,
+$(mkMethods ''AuthState ['askUsers, 'addUser, 'getUser, 'getUserById, 'delUser, 'authUser,
              'isUser, 'listUsers, 'numUsers, 'updateUser,
              'setSession, 'getSession, 'newSession, 'delSession, 'numSessions])
 
