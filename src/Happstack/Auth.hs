@@ -226,13 +226,9 @@ performLogout sid = do
 
 logoutHandler target = withSessionId handler
   where handler (Just sid) = do
-          ses <- query $ (GetSession sid)
-          case ses of
-            Just _ -> do performLogout sid
-                         target
-            Nothing -> nli
-        handler Nothing = anyRequest nli
-        nli = ok $ toResponse $ "not logged in"
+          performLogout sid
+          target
+        handler Nothing = target
 
 {-
  - Registration page
