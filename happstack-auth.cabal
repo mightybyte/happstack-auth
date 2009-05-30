@@ -15,7 +15,7 @@ hs-source-dirs:      src
 Exposed-modules:     Happstack.Auth
 
 Build-Depends:       haskell98, base, bytestring, mtl, containers, happstack, happstack-state, happstack-server,
-                     happstack-ixset, happstack-data, Crypto
+                     happstack-ixset, happstack-data, Crypto >= 4.2.0
 
 
 Extensions:          TemplateHaskell, DeriveDataTypeable, MultiParamTypeClasses,
