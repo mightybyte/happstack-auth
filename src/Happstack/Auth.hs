@@ -251,12 +251,19 @@ checkAndAdd uExists good user pass = do
                   good
     Nothing -> uExists
 
-newUserHandler existsOrInvalid nomatch succ = withData handler
+newUserHandler existsOrInvalid nomatch succ = newUserHandler' existsOrInvalid nomatch (const succ)
+
+{- newUserHandler' passes the username of just created account to
+ - the success part. This can be used to initiate any data associated
+ - with a user.
+ -}
+newUserHandler' existsOrInvalid nomatch succ = withData handler
   where handler (NewUserInfo user pass1 pass2)
           | not (saneUsername user) = existsOrInvalid
           | pass1 /= pass2 = nomatch
-          | otherwise = checkAndAdd existsOrInvalid succ (Username user) pass1
+          | otherwise = checkAndAdd existsOrInvalid (succ (Username user)) (Username user) pass1
         saneUsername str = foldl1 (&&) $ map isAlphaNum str
+
 
 {-
  - Handles data from a new user registration form.  The form must supply
