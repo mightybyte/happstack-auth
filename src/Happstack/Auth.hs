@@ -13,7 +13,7 @@ import Random
 
 import qualified Data.Map as M
 import Control.Monad.Reader
-import Control.Monad.State (modify,put,get,gets,MonadState)
+import Control.Monad.State (modify,put,get,gets)
 import Control.Monad.Trans
 import Codec.Utils
 import Data.ByteString.Internal
@@ -97,44 +97,43 @@ instance Component AuthState where
   type Dependencies AuthState = End
   initialValue = AuthState (Sessions M.empty) empty 0
 
-askUsers :: MonadReader AuthState m => m UserDB
+askUsers :: Query AuthState UserDB
 askUsers = return . users =<< ask
 
 askSessions :: Query AuthState (Sessions SessionData)
 askSessions = return . sessions =<< ask
 
-getUser :: MonadReader AuthState m => Username -> m (Maybe User)
+getUser :: Username -> Query AuthState (Maybe User)
 getUser username = do
   udb <- askUsers
   return $ getOne $ udb @= username
 
-getUserById :: MonadReader AuthState m => UserId -> m (Maybe User)
+getUserById :: UserId -> Query AuthState (Maybe User)
 getUserById uid = do
   udb <- askUsers
   return $ getOne $ udb @= uid
 
-modUsers :: MonadState AuthState m =>
-            (UserDB -> UserDB) -> m ()
+modUsers :: (UserDB -> UserDB) -> Update AuthState ()
 modUsers f = modify (\s -> (AuthState (sessions s) (f $ users s) (nextUid s)))
 
-modSessions :: MonadState AuthState m =>
-               (Sessions SessionData -> Sessions SessionData) -> m ()
+modSessions :: (Sessions SessionData -> Sessions SessionData) -> Update AuthState ()
 modSessions f = modify (\s -> (AuthState (f $ sessions s) (users s) (nextUid s)))
 
-getAndIncUid :: MonadState AuthState m => m UserId
+getAndIncUid :: Update AuthState UserId
 getAndIncUid = do
   uid <- gets nextUid
   modify (\s -> (AuthState (sessions s) (users s) (uid+1)))
   return uid
 
-isUser :: MonadReader AuthState m => Username -> m Bool
+isUser :: Username -> Query AuthState Bool
 isUser name = do
   us <- askUsers
   return $ isJust $ getOne $ us @= name
 
-addUser :: (MonadState AuthState m, MonadReader AuthState m) => Username -> SaltedHash -> m (Maybe User)
+addUser :: Username -> SaltedHash -> Update AuthState (Maybe User)
 addUser name pass = do
-  exists <- isUser name
+  s <- get
+  let exists = isJust $ getOne $ (users s) @= name
   if exists
     then return Nothing
     else do u <- newUser name pass
@@ -143,7 +142,7 @@ addUser name pass = do
   where newUser u p = do uid <- getAndIncUid
                          return $ User uid u p
 
-delUser :: MonadState AuthState m => Username -> m ()
+delUser :: Username -> Update AuthState ()
 delUser name = modUsers del
   where del db = case getOne (db @= name) of
                    Just u -> delete u db
@@ -151,7 +150,7 @@ delUser name = modUsers del
 
 updateUser u = do modUsers (updateIx (userid u) u)
 
-authUser :: MonadReader AuthState m => String -> String -> m (Maybe User)
+authUser :: String -> String -> Query AuthState (Maybe User)
 authUser name pass = do
   udb <- askUsers
   let u = getOne $ udb @= (Username name)
@@ -159,15 +158,15 @@ authUser name pass = do
     (Just v) -> return $ if checkSalt pass (userpass v) then u else Nothing
     Nothing  -> return Nothing
 
-listUsers :: MonadReader AuthState m => m [Username]
+listUsers :: Query AuthState [Username]
 listUsers = do
   udb <- askUsers
   return $ map username $ toList udb
 
-numUsers ::  MonadReader AuthState m => m Int
+numUsers :: Query AuthState Int
 numUsers = liftM length listUsers
 
-setSession :: (MonadState AuthState m) => SessionKey -> SessionData -> m ()
+setSession :: SessionKey -> SessionData -> Update AuthState ()
 setSession key u = do
   modSessions $ Sessions . (M.insert key u) . unsession
   return ()
@@ -177,7 +176,7 @@ newSession u = do
   setSession key u
   return key
 
-delSession :: (MonadState AuthState m) => SessionKey -> m ()
+delSession :: SessionKey -> Update AuthState ()
 delSession key = do
   modSessions $ Sessions . (M.delete key) . unsession
   return ()
@@ -185,8 +184,9 @@ delSession key = do
 getSession::SessionKey -> Query AuthState (Maybe SessionData)
 getSession key = liftM ((M.lookup key) . unsession) askSessions
 
-numSessions:: Proxy AuthState -> Query AuthState Int
-numSessions = proxyQuery $ liftM (M.size . unsession) askSessions
+numSessions:: Query AuthState Int
+numSessions = liftM (M.size . unsession) askSessions
+
 $(mkMethods ''AuthState ['askUsers, 'addUser, 'getUser, 'getUserById, 'delUser, 'authUser,
              'isUser, 'listUsers, 'numUsers, 'updateUser,
              'setSession, 'getSession, 'newSession, 'delSession, 'numSessions])
