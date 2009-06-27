@@ -296,6 +296,10 @@ getSessionId = liftM Just (readCookieValue sessionCookie) `mplus` return Nothing
 
 withSessionId = withDataFn getSessionId
 
+getLoggedInUser = withSessionId action
+  where action (Just sid) = query $ GetSession sid
+        action Nothing    = return Nothing
+
 withSession :: (MonadIO m)
             => (SessionData -> ServerPartT m a)
             -> ServerPartT m a
