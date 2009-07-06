@@ -25,13 +25,13 @@ impl = msum
   , dir "newuser" $ methodSP POST $ withData newUserPage
 
     -- View the user's session information
-  , dir "view" $ withSesCookie viewPage
+  , dir "view" $ withSessionId viewPage
 
     -- Show list of users
   , dir "list" userListPage
 
     -- Log the user out
-  , dir "logout" $ withSesCookie $ logoutHandler rootRedirect
+  , dir "logout" $ logoutHandler rootRedirect
 
     -- Matches http://domain.com/
     -- Provides basic links to the other pages.  Redirects to the
@@ -42,7 +42,7 @@ rootRedirect :: ServerPart Response
 rootRedirect = seeOther "/" $ toResponse ""
 
 loginSpt = msum [methodSP GET $ (fileServe ["login.html"] ".")
-                ,methodSP POST $ withData $ loginHandler loginGood loginBad]
+                ,methodSP POST $ loginHandler loginGood loginBad]
 mainPage ses = ok $ setHeader "Content-Type" "text/html" $ toResponse $
   "<html><body>"++
   "Logged in as "++(unUser $ sesUsername ses)++
