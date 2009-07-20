@@ -181,15 +181,21 @@ delSession key = do
   modSessions $ Sessions . (M.delete key) . unsession
   return ()
 
-getSession::SessionKey -> Query AuthState (Maybe SessionData)
+clearAllSessions :: Update AuthState ()
+clearAllSessions = modSessions $ const (Sessions M.empty)
+
+getSession :: SessionKey -> Query AuthState (Maybe SessionData)
 getSession key = liftM ((M.lookup key) . unsession) askSessions
+
+getSessions :: SessionKey -> Query AuthState (Sessions SessionData)
+getSessions key = askSessions
 
 numSessions:: Query AuthState Int
 numSessions = liftM (M.size . unsession) askSessions
 
 $(mkMethods ''AuthState ['askUsers, 'addUser, 'getUser, 'getUserById, 'delUser, 'authUser,
-             'isUser, 'listUsers, 'numUsers, 'updateUser,
-             'setSession, 'getSession, 'newSession, 'delSession, 'numSessions])
+             'isUser, 'listUsers, 'numUsers, 'updateUser, 'clearAllSessions,
+             'setSession, 'getSession, 'getSessions, 'newSession, 'delSession, 'numSessions])
 
 {-
  - Login page
@@ -202,7 +208,7 @@ instance FromData UserAuthInfo where
 
 performLogin user = do
   key <- update $ NewSession (SessionData (userid user) (username user))
-  addCookie (-1) (mkCookie sessionCookie (show key))
+  addCookie (2678400) (mkCookie sessionCookie (show key))
 
 {-
  - Handles data from a login form to log the user in.  The form must supply
