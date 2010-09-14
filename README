@@ -5,3 +5,13 @@ but needs quite a bit of polishing to become generally useable.  I'm
 realeasing it in this rough state because I don't know when I'll get
 around to actually polishing it up myself.  If you want to improve it,
 feel free to fork this repo.  I'll be happy to merge improvements in.
+
+Announcement:
+
+I have moved on to other endeavors and probably won't be maintaining this
+project any more.  Nils Schweinsberg has made some recent improvements to the
+codebase, so as of September, 2010 he is taking over as maintainer of the
+project.  You can find his most recent code at
+http://github.com/mcmaniac/happstack-auth.  His repository should be
+considered the authoritative incarnation of this project.  Although if any of
+the other forks suit your purposes better, feel free to use them.
